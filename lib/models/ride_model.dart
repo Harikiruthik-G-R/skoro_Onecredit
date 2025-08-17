@@ -31,6 +31,7 @@ class RideModel {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final String? cancellationReason;
+  final String? cancelledBy;
   final double? rating;
   final String? feedback;
 
@@ -54,6 +55,7 @@ class RideModel {
     this.startedAt,
     this.completedAt,
     this.cancellationReason,
+    this.cancelledBy,
     this.rating,
     this.feedback,
   });
@@ -99,6 +101,7 @@ class RideModel {
           ? DateTime.parse(json['completedAt'])
           : null,
       cancellationReason: json['cancellationReason'],
+      cancelledBy: json['cancelledBy'],
       rating: json['rating']?.toDouble(),
       feedback: json['feedback'],
     );
@@ -131,6 +134,7 @@ class RideModel {
       'startedAt': startedAt?.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
       'cancellationReason': cancellationReason,
+      'cancelledBy': cancelledBy,
       'rating': rating,
       'feedback': feedback,
     };
@@ -156,6 +160,7 @@ class RideModel {
     DateTime? startedAt,
     DateTime? completedAt,
     String? cancellationReason,
+    String? cancelledBy,
     double? rating,
     String? feedback,
   }) {
@@ -179,6 +184,7 @@ class RideModel {
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
+      cancelledBy: cancelledBy ?? this.cancelledBy,
       rating: rating ?? this.rating,
       feedback: feedback ?? this.feedback,
     );

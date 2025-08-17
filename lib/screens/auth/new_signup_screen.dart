@@ -152,7 +152,9 @@ class _SignupScreenState extends State<SignupScreen> {
                             if (value == null || value.isEmpty) {
                               return 'Please enter your email';
                             }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                            if (!RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            ).hasMatch(value)) {
                               return 'Please enter a valid email';
                             }
                             return null;
@@ -217,7 +219,8 @@ class _SignupScreenState extends State<SignupScreen> {
                           suffixIcon: IconButton(
                             onPressed: () {
                               setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
+                                _obscureConfirmPassword =
+                                    !_obscureConfirmPassword;
                               });
                             },
                             icon: Icon(
@@ -243,7 +246,9 @@ class _SignupScreenState extends State<SignupScreen> {
                           builder: (context, authProvider, child) {
                             return CustomButton(
                               text: 'Create Account',
-                              onPressed: authProvider.isLoading ? null : _handleSignup,
+                              onPressed: authProvider.isLoading
+                                  ? null
+                                  : _handleSignup,
                               isLoading: authProvider.isLoading,
                             );
                           },
@@ -257,13 +262,13 @@ class _SignupScreenState extends State<SignupScreen> {
                           children: [
                             Text(
                               'Already have an account? ',
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                              ),
+                              style: TextStyle(fontSize: 14.sp),
                             ),
                             GestureDetector(
                               onTap: () {
-                                context.go('/login?userType=${widget.userType}');
+                                context.go(
+                                  '/login?userType=${widget.userType}',
+                                );
                               },
                               child: Text(
                                 'Sign In',
@@ -306,8 +311,11 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    final authProvider = Provider.of<SimpleAuthProvider>(context, listen: false);
-    
+    final authProvider = Provider.of<SimpleAuthProvider>(
+      context,
+      listen: false,
+    );
+
     final success = await authProvider.signUp(
       username: _usernameController.text.trim(),
       email: _emailController.text.trim(),
@@ -320,18 +328,20 @@ class _SignupScreenState extends State<SignupScreen> {
     if (mounted) {
       if (success) {
         final user = authProvider.currentUser!;
-        
+
         // Navigate based on user type
         if (user.userType == 'rider') {
           context.go('/rider-home');
         } else {
           context.go('/driver-home');
         }
-        
+
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Account created successfully! Welcome, ${user.name}!'),
+            content: Text(
+              'Account created successfully! Welcome, ${user.name}!',
+            ),
             backgroundColor: Colors.green,
           ),
         );

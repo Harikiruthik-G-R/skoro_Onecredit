@@ -141,7 +141,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           builder: (context, authProvider, child) {
                             return CustomButton(
                               text: 'Sign In',
-                              onPressed: authProvider.isLoading ? null : _handleLogin,
+                              onPressed: authProvider.isLoading
+                                  ? null
+                                  : _handleLogin,
                               isLoading: authProvider.isLoading,
                             );
                           },
@@ -155,9 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Text(
                               'Don\'t have an account? ',
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                              ),
+                              style: TextStyle(fontSize: 14.sp),
                             ),
                             GestureDetector(
                               onTap: () {
@@ -195,8 +195,11 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final authProvider = Provider.of<SimpleAuthProvider>(context, listen: false);
-    
+    final authProvider = Provider.of<SimpleAuthProvider>(
+      context,
+      listen: false,
+    );
+
     final success = await authProvider.signIn(
       _usernameController.text.trim(),
       _passwordController.text,
@@ -205,14 +208,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) {
       if (success) {
         final user = authProvider.currentUser!;
-        
+
         // Navigate based on user type
         if (user.userType == 'rider') {
           context.go('/rider-home');
         } else {
           context.go('/driver-home');
         }
-        
+
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

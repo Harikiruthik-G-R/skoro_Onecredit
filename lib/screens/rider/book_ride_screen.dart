@@ -438,7 +438,10 @@ class _BookRideScreenState extends State<BookRideScreen> {
   Future<void> _bookRide() async {
     if (!_canBookRide()) return;
 
-    final authProvider = Provider.of<SimpleAuthProvider>(context, listen: false);
+    final authProvider = Provider.of<SimpleAuthProvider>(
+      context,
+      listen: false,
+    );
     final rideProvider = Provider.of<RideProvider>(context, listen: false);
 
     final user = authProvider.currentUser!;

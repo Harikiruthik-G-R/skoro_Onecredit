@@ -212,10 +212,21 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // Current Ride Status or Book Ride Button
-                            if (rideProvider.currentRide != null)
-                              _buildCurrentRideCard(rideProvider.currentRide!)
-                            else
-                              _buildBookRideSection(),
+                            StreamBuilder<RideModel?>(
+                              stream: rideProvider.getCurrentRideStream(
+                                user.id,
+                              ),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData && snapshot.data != null) {
+                                  return _buildCurrentRideCard(
+                                    snapshot.data!,
+                                    rideProvider,
+                                  );
+                                } else {
+                                  return _buildBookRideSection();
+                                }
+                              },
+                            ),
 
                             SizedBox(height: 16.h),
 
@@ -277,7 +288,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     );
   }
 
-  Widget _buildCurrentRideCard(RideModel ride) {
+  Widget _buildCurrentRideCard(RideModel ride, RideProvider rideProvider) {
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
@@ -319,22 +330,106 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ],
           ),
           SizedBox(height: 12.h),
-          Text(
-            'Driver: ${ride.driverName ?? 'Searching...'}',
-            style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
+
+          // Pickup and Drop locations
+          Row(
+            children: [
+              Icon(Icons.my_location, color: AppColors.success, size: 16.sp),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  ride.pickupAddress,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              Icon(Icons.location_on, color: AppColors.error, size: 16.sp),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  ride.dropAddress,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: 12.h),
+
+          // Driver info and fare
+          if (ride.driverName != null) ...[
+            Text(
+              'Driver: ${ride.driverName}',
+              style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
+            ),
+            if (ride.driverPhone != null)
+              Text(
+                'Phone: ${ride.driverPhone}',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+          ] else ...[
+            Text(
+              'Searching for driver...',
+              style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
+            ),
+          ],
+
           Text(
             'Vehicle: ${ride.vehicleType.toString().split('.').last.toUpperCase()}',
             style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
           ),
           SizedBox(height: 8.h),
-          Text(
-            'Fare: ₹${ride.fare.toStringAsFixed(0)}',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Fare: ₹${ride.fare.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+
+              // Cancel button (only show if ride hasn't started)
+              if (ride.status == RideStatus.requested ||
+                  ride.status == RideStatus.accepted)
+                TextButton(
+                  onPressed: () => _showCancelRideDialog(ride, rideProvider),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 8.h,
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel Ride',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -455,7 +550,10 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               title: Text('Sign Out'),
               onTap: () {
                 Navigator.pop(context);
-                Provider.of<SimpleAuthProvider>(context, listen: false).signOut();
+                Provider.of<SimpleAuthProvider>(
+                  context,
+                  listen: false,
+                ).signOut();
                 context.go('/user-type');
               },
             ),
@@ -467,7 +565,10 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   void _showRideHistory() {
     final rideProvider = Provider.of<RideProvider>(context, listen: false);
-    final authProvider = Provider.of<SimpleAuthProvider>(context, listen: false);
+    final authProvider = Provider.of<SimpleAuthProvider>(
+      context,
+      listen: false,
+    );
 
     rideProvider.loadRiderRides(authProvider.currentUser!.id);
 
@@ -521,6 +622,55 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showCancelRideDialog(RideModel ride, RideProvider rideProvider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Cancel Ride'),
+        content: Text('Are you sure you want to cancel this ride?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('No'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              final success = await rideProvider.cancelRide(
+                ride.id,
+                'rider',
+                reason: 'Cancelled by rider',
+              );
+
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ride cancelled successfully'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      rideProvider.errorMessage ?? 'Failed to cancel ride',
+                    ),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: Text(
+              'Yes, Cancel',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
       ),
     );
   }

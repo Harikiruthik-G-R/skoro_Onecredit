@@ -195,12 +195,14 @@ class RideProvider extends ChangeNotifier {
       final snapshot = await _firestore
           .collection('rides')
           .where('riderId', isEqualTo: riderId)
-          .orderBy('requestedAt', descending: true)
           .get();
 
       _riderRides = snapshot.docs
           .map((doc) => RideModel.fromJson({'id': doc.id, ...doc.data()}))
           .toList();
+
+      // Sort by requestedAt in memory (most recent first)
+      _riderRides.sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
 
       _isLoading = false;
       notifyListeners();
@@ -219,12 +221,14 @@ class RideProvider extends ChangeNotifier {
       final snapshot = await _firestore
           .collection('rides')
           .where('driverId', isEqualTo: driverId)
-          .orderBy('requestedAt', descending: true)
           .get();
 
       _driverRides = snapshot.docs
           .map((doc) => RideModel.fromJson({'id': doc.id, ...doc.data()}))
           .toList();
+
+      // Sort by requestedAt in memory (most recent first)
+      _driverRides.sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
 
       _isLoading = false;
       notifyListeners();
@@ -235,28 +239,142 @@ class RideProvider extends ChangeNotifier {
     }
   }
 
+  // Get available rides stream for drivers (only active rides)
   Stream<List<RideModel>> getAvailableRidesStream() {
     return _firestore
         .collection('rides')
         .where('status', isEqualTo: RideStatus.requested.toString())
-        .orderBy('requestedAt', descending: true)
+        .limit(20) // Limit to 20 most recent rides
         .snapshots()
         .map((snapshot) {
+          print(
+            'Available rides snapshot: ${snapshot.docs.length} rides found',
+          );
           _availableRides = snapshot.docs
-              .map((doc) => RideModel.fromJson({'id': doc.id, ...doc.data()}))
+              .map((doc) {
+                try {
+                  final data = doc.data();
+                  print('Processing ride: ${doc.id} with data: $data');
+                  return RideModel.fromJson({'id': doc.id, ...data});
+                } catch (e) {
+                  print('Error parsing ride ${doc.id}: $e');
+                  return null;
+                }
+              })
+              .where((ride) => ride != null)
+              .cast<RideModel>()
               .toList();
+
+          // Sort by requestedAt in memory (most recent first)
+          _availableRides.sort(
+            (a, b) => b.requestedAt.compareTo(a.requestedAt),
+          );
+
+          print('Processed ${_availableRides.length} valid rides');
+          notifyListeners();
           return _availableRides;
         });
   }
 
-  Stream<RideModel?> getCurrentRideStream(String rideId) {
-    return _firestore.collection('rides').doc(rideId).snapshots().map((doc) {
-      if (doc.exists) {
-        _currentRide = RideModel.fromJson({'id': doc.id, ...doc.data()!});
-        return _currentRide;
+  // Get current ride stream for a specific user
+  Stream<RideModel?> getCurrentRideStream(String userId) {
+    return _firestore
+        .collection('rides')
+        .where('riderId', isEqualTo: userId)
+        .where(
+          'status',
+          whereIn: [
+            RideStatus.requested.toString(),
+            RideStatus.accepted.toString(),
+            RideStatus.driverArriving.toString(),
+            RideStatus.inProgress.toString(),
+          ],
+        )
+        .limit(5) // Get a few more to sort in memory
+        .snapshots()
+        .map((snapshot) {
+          if (snapshot.docs.isNotEmpty) {
+            // Sort in memory and get the most recent one
+            final rides = snapshot.docs
+                .map((doc) => RideModel.fromJson({'id': doc.id, ...doc.data()}))
+                .toList();
+            rides.sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
+            _currentRide = rides.first;
+            notifyListeners();
+            return _currentRide;
+          } else {
+            _currentRide = null;
+            notifyListeners();
+            return null;
+          }
+        });
+  }
+
+  // Get driver's current ride stream
+  Stream<RideModel?> getDriverCurrentRideStream(String driverId) {
+    return _firestore
+        .collection('rides')
+        .where('driverId', isEqualTo: driverId)
+        .where(
+          'status',
+          whereIn: [
+            RideStatus.accepted.toString(),
+            RideStatus.driverArriving.toString(),
+            RideStatus.inProgress.toString(),
+          ],
+        )
+        .limit(5) // Get a few more to sort in memory
+        .snapshots()
+        .map((snapshot) {
+          if (snapshot.docs.isNotEmpty) {
+            // Sort in memory and get the most recent one
+            final rides = snapshot.docs
+                .map((doc) => RideModel.fromJson({'id': doc.id, ...doc.data()}))
+                .toList();
+            rides.sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
+            _currentRide = rides.first;
+            notifyListeners();
+            return _currentRide;
+          } else {
+            _currentRide = null;
+            notifyListeners();
+            return null;
+          }
+        });
+  }
+
+  // Cancel ride (for both rider and driver)
+  Future<bool> cancelRide(
+    String rideId,
+    String cancelledBy, {
+    String? reason,
+  }) async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      await _firestore.collection('rides').doc(rideId).update({
+        'status': RideStatus.cancelled.toString(),
+        'cancellationReason': reason ?? 'Cancelled by $cancelledBy',
+        'cancelledBy': cancelledBy,
+        'completedAt': DateTime.now().toIso8601String(),
+      });
+
+      // Clear current ride if it's the one being cancelled
+      if (_currentRide?.id == rideId) {
+        _currentRide = null;
       }
-      return null;
-    });
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to cancel ride: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<RideModel?> _getRideById(String rideId) async {
@@ -270,28 +388,6 @@ class RideProvider extends ChangeNotifier {
       notifyListeners();
     }
     return null;
-  }
-
-  Future<bool> cancelRide(String rideId, String reason) async {
-    try {
-      await _firestore.collection('rides').doc(rideId).update({
-        'status': RideStatus.cancelled.toString(),
-        'cancellationReason': reason,
-        'completedAt': DateTime.now().toIso8601String(),
-      });
-
-      _currentRide = null;
-
-      // Remove from available rides if present
-      _availableRides.removeWhere((ride) => ride.id == rideId);
-
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to cancel ride: $e';
-      notifyListeners();
-      return false;
-    }
   }
 
   Future<bool> rateRide(String rideId, double rating, String feedback) async {
@@ -327,5 +423,37 @@ class RideProvider extends ChangeNotifier {
   void clearCurrentRide() {
     _currentRide = null;
     notifyListeners();
+  }
+
+  // Method to clean up test rides from Firebase
+  Future<void> cleanupTestRides() async {
+    try {
+      // First, get all rides and filter in memory to avoid index requirements
+      final snapshot = await _firestore.collection('rides').get();
+
+      final batch = _firestore.batch();
+      int deletedCount = 0;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final riderId = data['riderId'] as String?;
+
+        // Check if this is a test ride
+        if (riderId != null && riderId.startsWith('test_rider_')) {
+          batch.delete(doc.reference);
+          print('Deleting test ride: ${doc.id} - ${data['riderName']}');
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        await batch.commit();
+        print('Deleted $deletedCount test rides');
+      } else {
+        print('No test rides found to delete');
+      }
+    } catch (e) {
+      print('Error cleaning up test rides: $e');
+    }
   }
 }
